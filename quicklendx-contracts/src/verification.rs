@@ -7,7 +7,7 @@ use crate::protocol_limits::{
     MAX_TAG_LENGTH, MAX_TAX_ID_LENGTH,
 };
 use crate::types::BidStatus;
-use crate::types::{Dispute, DisputeStatus, Invoice, InvoiceMetadata, InvoiceStatus};
+use crate::types::{DisputeStatus, Invoice, InvoiceMetadata, InvoiceStatus};
 use soroban_sdk::{contracttype, symbol_short, vec, Address, Env, String, Vec};
 
 /// Maximum normalized tags allowed on an invoice.
@@ -252,14 +252,6 @@ impl BusinessVerificationStorage {
         Self::verify_index_consistency(env, &verification.business)?;
 
         Ok(())
-    }
-
-    pub fn is_business_verified(env: &Env, business: &Address) -> bool {
-        if let Some(verification) = Self::get_verification(env, business) {
-            matches!(verification.status, BusinessVerificationStatus::Verified)
-        } else {
-            false
-        }
     }
 
     pub fn get_verified_businesses(env: &Env) -> Vec<Address> {
@@ -869,13 +861,6 @@ pub fn get_business_verification_status(
     BusinessVerificationStorage::get_verification(env, business)
 }
 
-pub fn require_business_verification(env: &Env, business: &Address) -> Result<(), QuickLendXError> {
-    if !BusinessVerificationStorage::is_business_verified(env, business) {
-        return Err(QuickLendXError::BusinessNotVerified);
-    }
-    Ok(())
-}
-
 /// Enforce that a business is not in KYC-pending state before allowing a sensitive operation.
 ///
 /// Pending businesses have submitted KYC but have not yet been approved or rejected.
@@ -1274,87 +1259,6 @@ fn get_risk_multiplier(risk_level: &InvestorRiskLevel) -> i128 {
         InvestorRiskLevel::High => 50,     // 50% of calculated limit
         InvestorRiskLevel::VeryHigh => 25, // 25% of calculated limit
     }
-}
-
-fn recover_base_limit_from_current_limit(
-    current_limit: i128,
-    tier: &InvestorTier,
-    risk_level: &InvestorRiskLevel,
-) -> i128 {
-    let tier_multiplier = get_tier_multiplier(tier);
-    let risk_multiplier = get_risk_multiplier(risk_level);
-    let combined_multiplier = tier_multiplier.saturating_mul(risk_multiplier);
-    if combined_multiplier <= 0 {
-        return current_limit.max(0);
-    }
-
-    // Ceiling division avoids gradually shrinking the recovered base from integer truncation.
-    current_limit
-        .max(0)
-        .saturating_mul(100)
-        .saturating_add(combined_multiplier - 1)
-        .saturating_div(combined_multiplier)
-}
-
-/// Update investor analytics after an investment
-pub fn update_investor_analytics(
-    env: &Env,
-    investor: &Address,
-    investment_amount: i128,
-    is_successful: bool,
-) -> Result<(), QuickLendXError> {
-    if investment_amount <= 0 {
-        return Err(QuickLendXError::InvalidAmount);
-    }
-
-    if let Some(mut verification) = InvestorVerificationStorage::get(env, investor) {
-        let prior_base_limit = recover_base_limit_from_current_limit(
-            verification.investment_limit,
-            &verification.tier,
-            &verification.risk_level,
-        );
-
-        verification.total_invested = verification
-            .total_invested
-            .saturating_add(investment_amount);
-        verification.last_activity = env.ledger().timestamp();
-
-        if is_successful {
-            verification.successful_investments =
-                verification.successful_investments.saturating_add(1);
-            // Calculate returns (simplified - would need actual return data)
-            let estimated_return = investment_amount.saturating_mul(110).saturating_div(100); // 10% return
-            verification.total_returns =
-                verification.total_returns.saturating_add(estimated_return);
-        } else {
-            verification.defaulted_investments =
-                verification.defaulted_investments.saturating_add(1);
-        }
-
-        // Recalculate risk score and tier
-        verification.risk_score =
-            calculate_investor_risk_score(env, investor, &verification.kyc_data)?;
-        verification.risk_level = determine_risk_level(verification.risk_score);
-        verification.tier = determine_investor_tier(env, investor, verification.risk_score)?;
-
-        // Preserve the investor's approved baseline and only re-derive the
-        // dynamic limit using the updated tier/risk profile.
-        let base_limit = prior_base_limit.max(1);
-        verification.investment_limit =
-            calculate_investment_limit(&verification.tier, &verification.risk_level, base_limit);
-
-        InvestorVerificationStorage::update(env, &verification);
-    }
-
-    Ok(())
-}
-
-/// Get investor analytics summary
-pub fn get_investor_analytics(
-    env: &Env,
-    investor: &Address,
-) -> Result<InvestorVerification, QuickLendXError> {
-    InvestorVerificationStorage::get(env, investor).ok_or(QuickLendXError::KYCNotFound)
 }
 
 /// Validate investor can make investment based on limits and risk

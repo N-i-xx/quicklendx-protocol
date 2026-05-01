@@ -36,6 +36,7 @@ where
 }
 
 /// Returns whether the payment-path guard is currently locked.
+#[allow(dead_code)]
 pub(crate) fn is_payment_guard_locked(env: &Env) -> bool {
     env.storage()
         .instance()

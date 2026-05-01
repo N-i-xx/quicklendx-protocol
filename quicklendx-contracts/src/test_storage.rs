@@ -985,17 +985,19 @@ fn test_maximum_values(env: &Env) {
 #[test]
 fn test_escrow_storage_keys() {
     let env = Env::default();
-    let invoice_id = BytesN::from_array(&env, &[1; 32]);
-    let invoice_id_2 = BytesN::from_array(&env, &[2; 32]);
+    with_registered_contract(&env, || {
+        let invoice_id = BytesN::from_array(&env, &[1; 32]);
+        let invoice_id_2 = BytesN::from_array(&env, &[2; 32]);
 
-    // Escrow keys should be unique per invoice
-    let key1 = (soroban_sdk::symbol_short!("escrow"), invoice_id.clone());
-    let key2 = (soroban_sdk::symbol_short!("escrow"), invoice_id_2.clone());
+        // Escrow keys should be unique per invoice
+        let key1 = (soroban_sdk::symbol_short!("escrow"), invoice_id.clone());
+        let key2 = (soroban_sdk::symbol_short!("escrow"), invoice_id_2.clone());
 
-    assert_ne!(
-        key1.1, key2.1,
-        "Different invoices should have different escrow keys"
-    );
+        assert_ne!(
+            key1.1, key2.1,
+            "Different invoices should have different escrow keys"
+        );
+    });
 }
 
 #[test]
@@ -1065,51 +1067,57 @@ fn test_storage_retrieval_consistency() {
 #[test]
 fn clear_all_removes_invoice_records() {
     let env = setup_env();
-    let inv = make_invoice(&env, 0);
-    let id = inv.id.clone();
-    InvoiceStorage::store_invoice(&env, &inv);
+    with_registered_contract(&env, || {
+        let inv = make_invoice(&env, 0);
+        let id = inv.id.clone();
+        InvoiceStorage::store_invoice(&env, &inv);
 
-    assert!(InvoiceStorage::get_invoice(&env, &id).is_some());
-    InvoiceStorage::clear_all(&env);
-    assert!(InvoiceStorage::get_invoice(&env, &id).is_none());
+        assert!(InvoiceStorage::get_invoice(&env, &id).is_some());
+        InvoiceStorage::clear_all(&env);
+        assert!(InvoiceStorage::get_invoice(&env, &id).is_none());
+    });
 }
 
 #[test]
 fn clear_all_empties_status_buckets() {
     let env = setup_env();
-    let inv = make_invoice(&env, 1);
-    InvoiceStorage::store_invoice(&env, &inv);
+    with_registered_contract(&env, || {
+        let inv = make_invoice(&env, 1);
+        InvoiceStorage::store_invoice(&env, &inv);
 
-    InvoiceStorage::clear_all(&env);
+        InvoiceStorage::clear_all(&env);
 
-    let pending = InvoiceStorage::get_invoices_by_status(&env, &InvoiceStatus::Pending);
-    assert_eq!(
-        pending.len(),
-        0,
-        "pending bucket must be empty after clear_all"
-    );
+        let pending = InvoiceStorage::get_invoices_by_status(&env, &InvoiceStatus::Pending);
+        assert_eq!(
+            pending.len(),
+            0,
+            "pending bucket must be empty after clear_all"
+        );
+    });
 }
 
 #[test]
 fn clear_all_empties_category_index() {
     let env = setup_env();
-    let inv = make_invoice(&env, 2);
-    InvoiceStorage::store_invoice(&env, &inv);
+    with_registered_contract(&env, || {
+        let inv = make_invoice(&env, 2);
+        InvoiceStorage::store_invoice(&env, &inv);
 
-    InvoiceStorage::clear_all(&env);
+        InvoiceStorage::clear_all(&env);
 
-    // After clear the category index for Services must be empty.
-    let key = (
-        soroban_sdk::symbol_short!("cat_idx"),
-        InvoiceCategory::Services,
-    );
-    let bucket: Option<soroban_sdk::Vec<soroban_sdk::BytesN<32>>> =
-        env.storage().instance().get(&key);
-    let len = bucket.map(|v| v.len()).unwrap_or(0);
-    assert_eq!(
-        len, 0,
-        "category index must have no orphans after clear_all"
-    );
+        // After clear the category index for Services must be empty.
+        let key = (
+            soroban_sdk::symbol_short!("cat_idx"),
+            InvoiceCategory::Services,
+        );
+        let bucket: Option<soroban_sdk::Vec<soroban_sdk::BytesN<32>>> =
+            env.storage().instance().get(&key);
+        let len = bucket.map(|v| v.len()).unwrap_or(0);
+        assert_eq!(
+            len, 0,
+            "category index must have no orphans after clear_all"
+        );
+    });
 }
 
 #[test]

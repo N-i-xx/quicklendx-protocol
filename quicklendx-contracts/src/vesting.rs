@@ -5,7 +5,7 @@
 //! in the contract and release them linearly over time after an optional cliff.
 //! Beneficiaries can claim vested tokens as they unlock.
 
-use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol};
+use soroban_sdk::{contractevent, contracttype, symbol_short, Address, Env, Symbol};
 
 use crate::admin::AdminStorage;
 use crate::errors::QuickLendXError;
@@ -15,6 +15,7 @@ const VESTING_COUNTER_KEY: Symbol = symbol_short!("vest_cnt");
 const VESTING_KEY: Symbol = symbol_short!("vest");
 
 /// Events emitted by the vesting module.
+#[allow(dead_code)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum VestingEvent {
     NewSchedule {
@@ -194,18 +195,16 @@ impl Vesting {
         transfer_funds(env, &token, admin, &contract, total_amount)?;
 
         VestingStorage::store(env, &schedule);
-        env.events().publish(
-            (symbol_short!("vesting"), symbol_short!("created")),
-            (
-                id,
-                beneficiary.clone(),
-                token.clone(),
-                total_amount,
-                start_time,
-                cliff_time,
-                end_time,
-            ),
-        );
+        VestingCreatedEvent {
+            id,
+            beneficiary: beneficiary.clone(),
+            token: token.clone(),
+            total_amount,
+            start_time,
+            cliff_time,
+            end_time,
+        }
+        .publish(env);
 
         Ok(id)
     }
@@ -293,10 +292,32 @@ impl Vesting {
         Self::validate_schedule_state(&schedule)?;
         VestingStorage::update(env, &schedule);
 
-        env.events().publish(
-            (symbol_short!("vesting"), symbol_short!("released")),
-            (id, beneficiary.clone(), schedule.token.clone(), releasable),
-        );
+        VestingReleasedEvent {
+            id,
+            beneficiary: beneficiary.clone(),
+            token: schedule.token.clone(),
+            releasable,
+        }
+        .publish(env);
         Ok(releasable)
     }
+}
+
+#[contractevent]
+pub struct VestingCreatedEvent {
+    pub id: u64,
+    pub beneficiary: Address,
+    pub token: Address,
+    pub total_amount: i128,
+    pub start_time: u64,
+    pub cliff_time: u64,
+    pub end_time: u64,
+}
+
+#[contractevent]
+pub struct VestingReleasedEvent {
+    pub id: u64,
+    pub beneficiary: Address,
+    pub token: Address,
+    pub releasable: i128,
 }

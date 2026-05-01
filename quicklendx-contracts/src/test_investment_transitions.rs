@@ -92,16 +92,14 @@ impl TestContext {
     ) -> BytesN<32> {
         // Verify business
         self.client
-            .submit_kyc_application(business, &Bytes::from_slice(&self.env, b"KYC"))
-            .unwrap();
-        self.client.verify_business(&self.admin, business).unwrap();
+            .submit_kyc_application(business, &String::from_str(&self.env, "KYC"));
+        self.client.verify_business(&self.admin, business);
 
         // Verify investor
         self.client
-            .submit_investor_kyc(investor, &Bytes::from_slice(&self.env, b"KYC"))
-            .unwrap();
+            .submit_investor_kyc(investor, &String::from_str(&self.env, "KYC"));
         self.client
-            .verify_investor(&self.admin, investor, &200_000i128);
+            .verify_investor(investor, &200_000i128);
 
         // Create and verify invoice
         let due_date = self.env.ledger().timestamp() + 86_400;
@@ -115,16 +113,14 @@ impl TestContext {
                 &String::from_str(&self.env, "Test invoice"),
                 &InvoiceCategory::Services,
                 &Vec::new(&self.env),
-            )
-            .unwrap();
-        self.client.verify_invoice(&invoice_id).unwrap();
+            );
+        self.client.verify_invoice(&invoice_id);
 
         // Place and accept bid to create investment
         let bid_id = self
             .client
-            .place_bid(investor, &invoice_id, &bid_amount, &invoice_amount)
-            .unwrap();
-        self.client.accept_bid(&invoice_id, &bid_id).unwrap();
+            .place_bid(investor, &invoice_id, &bid_amount, &invoice_amount);
+        self.client.accept_bid(&invoice_id, &bid_id);
 
         invoice_id
     }
@@ -133,13 +129,12 @@ impl TestContext {
     fn get_investment(&self, invoice_id: &BytesN<32>) -> Investment {
         self.client
             .get_invoice_investment(invoice_id)
-            .expect("Investment should exist")
     }
 
     /// Check if investment is in active index
     fn is_in_active_index(&self, investment_id: &BytesN<32>) -> bool {
         let active_ids = self.client.get_active_investment_ids();
-        active_ids.iter().any(|id| id == investment_id)
+        active_ids.iter().any(|id| id == *investment_id)
     }
 
     /// Verify no orphan investments exist
@@ -180,8 +175,7 @@ fn test_transition_active_to_completed() {
 
     // First settlement should succeed
     ctx.client
-        .settle_invoice(&invoice_id, &invoice_amount)
-        .unwrap();
+        .settle_invoice(&invoice_id, &invoice_amount);
     let settled_investment = ctx.get_investment(&invoice_id);
     assert_eq!(settled_investment.status, InvestmentStatus::Completed);
     assert!(!ctx.is_in_active_index(&settled_investment.investment_id));
@@ -215,7 +209,7 @@ fn test_transition_active_to_defaulted() {
         .set_timestamp(ctx.env.ledger().timestamp() + 86_400 * 40);
 
     // Trigger default
-    ctx.client.handle_overdue_invoices(&100u32).unwrap();
+    ctx.client.handle_overdue_invoices(&100u32);
     let defaulted_investment = ctx.get_investment(&invoice_id);
     assert_eq!(
         defaulted_investment.status,
@@ -251,7 +245,7 @@ fn test_transition_active_to_refunded() {
     assert_eq!(investment.status, InvestmentStatus::Active);
 
     // Cancel invoice to trigger refund
-    ctx.client.cancel_invoice(&invoice_id).unwrap();
+    ctx.client.cancel_invoice(&invoice_id);
 
     // After cancellation, investment should be Refunded
     let refunded_investment = ctx.get_investment(&invoice_id);
@@ -424,7 +418,7 @@ fn test_no_orphan_after_completion() {
     assert!(ctx.is_in_active_index(&investment_id));
 
     // Complete the investment
-    ctx.client.settle_invoice(&invoice_id, &1_000).unwrap();
+    ctx.client.settle_invoice(&invoice_id, &1_000);
 
     // Verify removed from active index
     assert!(!ctx.is_in_active_index(&investment_id));
@@ -451,7 +445,7 @@ fn test_no_orphan_after_default() {
     ctx.env
         .ledger()
         .set_timestamp(ctx.env.ledger().timestamp() + 86_400 * 40);
-    ctx.client.handle_overdue_invoices(&100u32).unwrap();
+    ctx.client.handle_overdue_invoices(&100u32);
 
     // Verify removed from active index
     assert!(!ctx.is_in_active_index(&investment_id));
@@ -475,7 +469,7 @@ fn test_no_orphan_after_refund() {
     assert!(ctx.is_in_active_index(&investment_id));
 
     // Cancel invoice to refund
-    ctx.client.cancel_invoice(&invoice_id).unwrap();
+    ctx.client.cancel_invoice(&invoice_id);
 
     // Verify removed from active index
     assert!(!ctx.is_in_active_index(&investment_id));
@@ -498,7 +492,7 @@ fn test_double_settlement_prevention() {
     let invoice_id = ctx.setup_funded_invoice(&business, &investor, &currency, 1_000, 1_000);
 
     // First settlement
-    ctx.client.settle_invoice(&invoice_id, &1_000).unwrap();
+    ctx.client.settle_invoice(&invoice_id, &1_000);
     let investment_after_first = ctx.get_investment(&invoice_id);
     assert_eq!(investment_after_first.status, InvestmentStatus::Completed);
 
@@ -525,12 +519,12 @@ fn test_double_default_prevention() {
         .set_timestamp(ctx.env.ledger().timestamp() + 86_400 * 40);
 
     // First default
-    ctx.client.handle_overdue_invoices(&100u32).unwrap();
+    ctx.client.handle_overdue_invoices(&100u32);
     let investment_after_first = ctx.get_investment(&invoice_id);
     assert_eq!(investment_after_first.status, InvestmentStatus::Defaulted);
 
     // Second attempt should be safe (already defaulted)
-    ctx.client.handle_overdue_invoices(&100u32).unwrap();
+    ctx.client.handle_overdue_invoices(&100u32);
     let investment_after_second = ctx.get_investment(&invoice_id);
     assert_eq!(
         investment_after_second.status,
@@ -585,7 +579,7 @@ fn test_concurrent_investments_independent_transitions() {
     assert!(!ctx.is_in_active_index(&inv2));
 
     // Transition 3: Refund
-    ctx.client.cancel_invoice(&invoice3).unwrap();
+    ctx.client.cancel_invoice(&invoice3);
     assert!(!ctx.is_in_active_index(&inv3));
 
     // Verify active index empty and no orphans
@@ -650,12 +644,12 @@ fn test_active_index_cant_contain_terminal_investments() {
     let inv2 = ctx.get_investment(&invoice_id2).investment_id;
 
     // Create terminal states
-    ctx.client.settle_invoice(&invoice_id1, &1_000).unwrap();
+    ctx.client.settle_invoice(&invoice_id1, &1_000);
 
     ctx.env
         .ledger()
         .set_timestamp(ctx.env.ledger().timestamp() + 86_400 * 40);
-    ctx.client.handle_overdue_invoices(&100u32).unwrap();
+    ctx.client.handle_overdue_invoices(&100u32);
 
     // Verify neither is in active index
     assert!(!ctx.is_in_active_index(&inv1));
@@ -689,7 +683,7 @@ fn test_index_integrity_under_mutations() {
 
     // Settle all
     for invoice_id in invoice_ids.iter() {
-        ctx.client.settle_invoice(&invoice_id, &1_000).unwrap();
+        ctx.client.settle_invoice(&invoice_id, &1_000);
     }
 
     let after_count = ctx.client.get_active_investment_ids().len();

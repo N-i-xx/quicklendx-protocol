@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::errors::QuickLendXError;
 // Re-export from crate::types so other modules can continue to import from crate::investment.
 pub use crate::types::{InsuranceCoverage, Investment, InvestmentStatus};
@@ -446,25 +447,6 @@ impl InvestmentStorage {
     ///
     /// Returns `true` when no orphans exist (all active-index entries have
     /// `status == Active`).  Returns `false` if any entry has a terminal status
-    /// but was not removed from the index - indicating a bug in the transition
-    /// path.
-    ///
-    /// ### Security note
-    /// This is a read-only integrity check.  It does **not** mutate state.
-    /// Call it after settlement or default to assert correctness in tests and
-    /// off-chain monitoring.
-    pub fn validate_no_orphan_investments(env: &Env) -> bool {
-        let ids = Self::get_active_investment_ids(env);
-        for id in ids.iter() {
-            if let Some(inv) = Self::get_investment(env, &id) {
-                if inv.status != InvestmentStatus::Active {
-                    return false; // orphan detected
-                }
-            }
-        }
-        true
-    }
-
     fn investor_index_key(investor: &Address) -> (Symbol, Address) {
         (symbol_short!("invst_inv"), investor.clone())
     }
@@ -482,7 +464,6 @@ impl InvestmentStorage {
     pub fn add_to_investor_index(env: &Env, investor: &Address, investment_id: &BytesN<32>) {
         let key = Self::investor_index_key(investor);
         let mut investments = Self::get_investments_by_investor(env, investor);
-        // Check if already exists
         let mut exists = false;
         for inv_id in investments.iter() {
             if inv_id == *investment_id {
@@ -496,40 +477,11 @@ impl InvestmentStorage {
         }
     }
 
-    // --- Aliases and compatibility methods ---
-
-    pub fn store(env: &Env, investment: &Investment) {
-        Self::store_investment(env, investment);
-    }
-
     pub fn get(env: &Env, investment_id: &BytesN<32>) -> Option<Investment> {
         Self::get_investment(env, investment_id)
     }
 
-    pub fn update(env: &Env, investment: &Investment) {
-        Self::update_investment(env, investment);
-    }
-
-    pub fn get_by_invoice(env: &Env, invoice_id: &BytesN<32>) -> Option<Investment> {
-        Self::get_investment_by_invoice(env, invoice_id)
-    }
-
     pub fn get_by_investor(env: &Env, investor: &Address) -> Vec<BytesN<32>> {
         Self::get_investments_by_investor(env, investor)
-    }
-
-    pub fn get_by_status(env: &Env, status: InvestmentStatus) -> Vec<BytesN<32>> {
-        // Fallback for status-based retrieval if needed
-        let mut result = Vec::new(env);
-        // This is inefficient but avoids complex indexing for now
-        // A better way would be a dedicated status index.
-        for id in Self::get_active_investment_ids(env).iter() {
-            if let Some(inv) = Self::get_investment(env, &id) {
-                if inv.status == status {
-                    result.push_back(id);
-                }
-            }
-        }
-        result
     }
 }

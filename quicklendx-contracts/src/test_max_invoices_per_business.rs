@@ -13,6 +13,7 @@ fn setup() -> (
     Address,
     Address,
     Address,
+    Address,
 ) {
     let env = Env::default();
     env.mock_all_auths();
@@ -31,7 +32,7 @@ fn setup() -> (
     let currency = Address::generate(&env);
     client.add_currency(&admin, &currency);
 
-    (env, client, admin, business, currency)
+    (env, client, admin, business, currency, contract_id)
 }
 
 fn upload_basic_invoice(
@@ -82,7 +83,7 @@ fn test_upload_invoice_enforces_max_invoices_per_business() {
 
 #[test]
 fn test_cancelled_invoices_free_up_slots() {
-    let (env, client, admin, business, currency) = setup();
+    let (env, client, admin, business, currency, contract_id) = setup();
 
     client.update_limits_max_invoices(&admin, &10i128, &365u64, &0u64, &2u32);
 
@@ -106,19 +107,23 @@ fn test_cancelled_invoices_free_up_slots() {
 
     // Cancel one invoice -> slot freed
     client.cancel_invoice(&invoice1);
-    let cancelled = InvoiceStorage::get_invoice(&env, &invoice1).unwrap();
+    let cancelled = env.as_contract(&contract_id, || {
+        InvoiceStorage::get_invoice(&env, &invoice1).unwrap()
+    });
     assert_eq!(cancelled.status, InvoiceStatus::Cancelled);
 
     upload_basic_invoice(&env, &client, &business, &currency, 10);
     assert_eq!(
-        InvoiceStorage::count_active_business_invoices(&env, &business),
+        env.as_contract(&contract_id, || {
+            InvoiceStorage::count_active_business_invoices(&env, &business)
+        }),
         2
     );
 }
 
 #[test]
 fn test_paid_invoices_free_up_slots() {
-    let (env, client, admin, business, currency) = setup();
+    let (env, client, admin, business, currency, contract_id) = setup();
     client.update_limits_max_invoices(&admin, &10, &365, &86_400, &2);
 
     client.update_limits_max_invoices(&admin, &10i128, &365u64, &0u64, &2u32);
@@ -127,21 +132,27 @@ fn test_paid_invoices_free_up_slots() {
     let _invoice2 = upload_basic_invoice(&env, &client, &business, &currency, 10);
 
     // Mark invoice1 as paid (simulate settlement)
-    let mut inv = InvoiceStorage::get_invoice(&env, &invoice1).unwrap();
-    inv.mark_as_paid(&env, business.clone(), env.ledger().timestamp());
-    InvoiceStorage::update_invoice(&env, &inv);
+    let mut inv = env.as_contract(&contract_id, || {
+        InvoiceStorage::get_invoice(&env, &invoice1).unwrap()
+    });
+    env.as_contract(&contract_id, || {
+        inv.mark_as_paid(&env, business.clone(), env.ledger().timestamp());
+        InvoiceStorage::update_invoice(&env, &inv);
+    });
 
     // Should allow creating a new invoice now
     upload_basic_invoice(&env, &client, &business, &currency, 10);
     assert_eq!(
-        InvoiceStorage::count_active_business_invoices(&env, &business),
+        env.as_contract(&contract_id, || {
+            InvoiceStorage::count_active_business_invoices(&env, &business)
+        }),
         2
     );
 }
 
 #[test]
 fn test_limit_zero_disables_max_invoices_check() {
-    let (env, client, admin, business, currency) = setup();
+    let (env, client, admin, business, currency, contract_id) = setup();
     client.update_limits_max_invoices(&admin, &10, &365, &86_400, &0);
 
     // limit=0 means unlimited
@@ -152,14 +163,16 @@ fn test_limit_zero_disables_max_invoices_check() {
     }
 
     assert_eq!(
-        InvoiceStorage::count_active_business_invoices(&env, &business),
+        env.as_contract(&contract_id, || {
+            InvoiceStorage::count_active_business_invoices(&env, &business)
+        }),
         10
     );
 }
 
 #[test]
 fn test_multiple_businesses_independent_limits() {
-    let (env, client, admin, business1, currency) = setup();
+    let (env, client, admin, business1, currency, contract_id) = setup();
     let business2 = Address::generate(&env);
 
     client.submit_kyc_application(&business2, &String::from_str(&env, "KYC DATA"));
@@ -190,18 +203,22 @@ fn test_multiple_businesses_independent_limits() {
     upload_basic_invoice(&env, &client, &business2, &currency, 10);
 
     assert_eq!(
-        InvoiceStorage::count_active_business_invoices(&env, &business1),
+        env.as_contract(&contract_id, || {
+            InvoiceStorage::count_active_business_invoices(&env, &business1)
+        }),
         2
     );
     assert_eq!(
-        InvoiceStorage::count_active_business_invoices(&env, &business2),
+        env.as_contract(&contract_id, || {
+            InvoiceStorage::count_active_business_invoices(&env, &business2)
+        }),
         2
     );
 }
 
 #[test]
 fn test_only_active_invoices_count_toward_limit() {
-    let (env, client, admin, business, currency) = setup();
+    let (env, client, admin, business, currency, contract_id) = setup();
 
     client.update_limits_max_invoices(&admin, &10i128, &365u64, &0u64, &3u32);
 
@@ -212,13 +229,19 @@ fn test_only_active_invoices_count_toward_limit() {
     // Cancel one, mark one as paid
     client.cancel_invoice(&invoice1);
 
-    let mut inv2 = InvoiceStorage::get_invoice(&env, &invoice2).unwrap();
-    inv2.mark_as_paid(&env, business.clone(), env.ledger().timestamp());
-    InvoiceStorage::update_invoice(&env, &inv2);
+    let mut inv2 = env.as_contract(&contract_id, || {
+        InvoiceStorage::get_invoice(&env, &invoice2).unwrap()
+    });
+    env.as_contract(&contract_id, || {
+        inv2.mark_as_paid(&env, business.clone(), env.ledger().timestamp());
+        InvoiceStorage::update_invoice(&env, &inv2);
+    });
 
     // Active count should be 1 (only invoice3)
     assert_eq!(
-        InvoiceStorage::count_active_business_invoices(&env, &business),
+        env.as_contract(&contract_id, || {
+            InvoiceStorage::count_active_business_invoices(&env, &business)
+        }),
         1
     );
 
@@ -227,7 +250,9 @@ fn test_only_active_invoices_count_toward_limit() {
     upload_basic_invoice(&env, &client, &business, &currency, 10);
 
     assert_eq!(
-        InvoiceStorage::count_active_business_invoices(&env, &business),
+        env.as_contract(&contract_id, || {
+            InvoiceStorage::count_active_business_invoices(&env, &business)
+        }),
         3
     );
 
@@ -249,7 +274,7 @@ fn test_only_active_invoices_count_toward_limit() {
 
 #[test]
 fn test_limit_of_one() {
-    let (env, client, admin, business, currency) = setup();
+    let (env, client, admin, business, currency, _contract_id) = setup();
 
     client.update_limits_max_invoices(&admin, &10i128, &365u64, &0u64, &1u32);
 

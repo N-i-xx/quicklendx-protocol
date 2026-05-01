@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::admin::AdminStorage;
 use crate::errors::QuickLendXError;
 use crate::storage::InvoiceStorage;
@@ -27,38 +28,11 @@ fn add_to_dispute_index(env: &Env, invoice_id: &BytesN<32>) {
     }
 }
 
-/// @notice Track an invoice ID in the dispute index.
-/// @dev Idempotent helper used by contract entry points to keep query indexes consistent.
-/// @param env The contract environment.
-/// @param invoice_id The invoice to index as dispute-bearing.
+/// Track an invoice ID in the dispute index.
 pub(crate) fn track_dispute_invoice(env: &Env, invoice_id: &BytesN<32>) {
     add_to_dispute_index(env, invoice_id);
 }
 
-fn zero_address(env: &Env) -> Address {
-    Address::from_str(
-        env,
-        "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
-    )
-}
-fn assert_is_admin(_env: &Env, _admin: &Address) -> Result<(), QuickLendXError> {
-    Ok(())
-}
-
-/// @notice Create a dispute on an invoice (standalone storage variant).
-/// @dev Validates:
-///   - No duplicate dispute for the same invoice
-///   - Invoice exists and is in a disputable status (Pending/Verified/Funded/Paid)
-///   - Creator is the business owner or investor on the invoice
-///   - Reason is non-empty and <= MAX_DISPUTE_REASON_LENGTH (1000 chars)
-///   - Evidence is non-empty and <= MAX_DISPUTE_EVIDENCE_LENGTH (2000 chars)
-/// @param env The contract environment.
-/// @param invoice_id The invoice to dispute.
-/// @param creator The address creating the dispute (must be authorized).
-/// @param reason The dispute reason (1-1000 chars).
-/// @param evidence Supporting evidence (1-2000 chars).
-/// @return Ok(()) on success, Err with typed error on failure.
-#[allow(dead_code)]
 pub fn create_dispute(
     env: &Env,
     invoice_id: &BytesN<32>,
@@ -75,7 +49,6 @@ pub fn create_dispute(
     validate_dispute_evidence(evidence)?;
     validate_dispute_eligibility(&invoice, creator)?;
 
-    // Set dispute fields
     invoice.dispute_status = DisputeStatus::Disputed;
     invoice.dispute = Dispute {
         created_by: creator.clone(),
@@ -83,13 +56,12 @@ pub fn create_dispute(
         reason: reason.clone(),
         evidence: evidence.clone(),
         resolution: String::from_str(env, ""),
-        resolved_by: creator.clone(), // Placeholder
+        resolved_by: creator.clone(),
         resolved_at: 0,
     };
 
     InvoiceStorage::update_invoice(env, &invoice);
     add_to_dispute_index(env, invoice_id);
-
     Ok(())
 }
 
@@ -118,7 +90,6 @@ pub fn resolve_dispute(
     resolution: &String,
 ) -> Result<(), QuickLendXError> {
     AdminStorage::require_admin(env, admin)?;
-
     validate_dispute_resolution(resolution)?;
 
     let mut invoice =
@@ -149,14 +120,10 @@ pub fn get_invoices_with_disputes(env: &Env) -> Vec<BytesN<32>> {
     get_dispute_index(env)
 }
 
-/// @notice Read the dispute index for query endpoints.
-/// @param env The contract environment.
-/// @return Invoice IDs that have entered the dispute lifecycle.
 pub(crate) fn indexed_dispute_invoices(env: &Env) -> Vec<BytesN<32>> {
     get_dispute_index(env)
 }
 
-#[allow(dead_code)]
 pub fn get_invoices_by_dispute_status(env: &Env, status: &DisputeStatus) -> Vec<BytesN<32>> {
     let mut result = Vec::new(env);
     for invoice_id in get_dispute_index(env).iter() {
@@ -169,12 +136,6 @@ pub fn get_invoices_by_dispute_status(env: &Env, status: &DisputeStatus) -> Vec<
     result
 }
 
-/// @notice Filter dispute-indexed invoices by dispute status.
-/// @param env The contract environment.
-/// @param status Desired dispute status filter.
-/// @return Invoice IDs whose current dispute status matches `status`.
 pub(crate) fn indexed_invoices_by_status(env: &Env, status: &DisputeStatus) -> Vec<BytesN<32>> {
     get_invoices_by_dispute_status(env, status)
 }
-// Invoice disputes are represented on [`crate::invoice::Invoice`] and handled by contract
-// entry points in `lib.rs`. This module is reserved for future dispute-specific helpers.

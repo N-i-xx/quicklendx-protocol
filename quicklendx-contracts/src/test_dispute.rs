@@ -99,7 +99,6 @@ mod test_dispute {
                 &InvoiceCategory::Services,
                 &Vec::new(env),
             )
-            .unwrap()
     }
 
     // -----------------------------------------------------------------------
@@ -639,9 +638,9 @@ mod test_dispute {
         let (env, client, admin) = setup();
         let business = create_verified_business(&env, &client, &admin);
 
-        let id1 = create_test_invoice(&env, &client, &business, 100_000);
-        let id2 = create_test_invoice(&env, &client, &business, 150_000);
-        let id3 = create_test_invoice(&env, &client, &business, 200_000);
+        let id1 = create_test_invoice(&env, &client, &admin, &business, 100_000);
+        let id2 = create_test_invoice(&env, &client, &admin, &business, 150_000);
+        let id3 = create_test_invoice(&env, &client, &admin, &business, 200_000);
 
         let reason = String::from_str(&env, "Dispute");
         let evidence = String::from_str(&env, "Evidence");
@@ -661,9 +660,9 @@ mod test_dispute {
         let (env, client, admin) = setup();
         let business = create_verified_business(&env, &client, &admin);
 
-        let id1 = create_test_invoice(&env, &client, &business, 100_000);
-        let id2 = create_test_invoice(&env, &client, &business, 150_000);
-        let id3 = create_test_invoice(&env, &client, &business, 200_000);
+        let id1 = create_test_invoice(&env, &client, &admin, &business, 100_000);
+        let id2 = create_test_invoice(&env, &client, &admin, &business, 150_000);
+        let id3 = create_test_invoice(&env, &client, &admin, &business, 200_000);
 
         let reason = String::from_str(&env, "Test dispute");
         let evidence = String::from_str(&env, "Test evidence");
@@ -686,8 +685,8 @@ mod test_dispute {
         let (env, client, admin) = setup();
         let business = create_verified_business(&env, &client, &admin);
 
-        let id1 = create_test_invoice(&env, &client, &business, 100_000);
-        let id2 = create_test_invoice(&env, &client, &business, 150_000);
+        let id1 = create_test_invoice(&env, &client, &admin, &business, 100_000);
+        let id2 = create_test_invoice(&env, &client, &admin, &business, 150_000);
 
         let reason = String::from_str(&env, "Test dispute");
         let evidence = String::from_str(&env, "Test evidence");
@@ -707,8 +706,8 @@ mod test_dispute {
         let (env, client, admin) = setup();
         let business = create_verified_business(&env, &client, &admin);
 
-        let id1 = create_test_invoice(&env, &client, &business, 100_000);
-        let id2 = create_test_invoice(&env, &client, &business, 150_000);
+        let id1 = create_test_invoice(&env, &client, &admin, &business, 100_000);
+        let id2 = create_test_invoice(&env, &client, &admin, &business, 150_000);
 
         let reason = String::from_str(&env, "Test dispute");
         let evidence = String::from_str(&env, "Test evidence");
@@ -731,7 +730,7 @@ mod test_dispute {
         let (env, client, admin) = setup();
         let business = create_verified_business(&env, &client, &admin);
 
-        let id1 = create_test_invoice(&env, &client, &business, 100_000);
+        let id1 = create_test_invoice(&env, &client, &admin, &business, 100_000);
         // Create a dispute so there IS at least one entry in the index
         client.create_dispute(
             &id1,
@@ -757,8 +756,8 @@ mod test_dispute {
         let (env, client, admin) = setup();
         let business = create_verified_business(&env, &client, &admin);
 
-        let id1 = create_test_invoice(&env, &client, &business, 100_000);
-        let id2 = create_test_invoice(&env, &client, &business, 150_000);
+        let id1 = create_test_invoice(&env, &client, &admin, &business, 100_000);
+        let id2 = create_test_invoice(&env, &client, &admin, &business, 150_000);
 
         let reason = String::from_str(&env, "Dispute");
         let evidence = String::from_str(&env, "Evidence");
@@ -785,11 +784,11 @@ mod test_dispute {
         let (env, client, admin) = setup();
         let business = create_verified_business(&env, &client, &admin);
 
-        let id0 = create_test_invoice(&env, &client, &business, 100_000);
-        let id1 = create_test_invoice(&env, &client, &business, 110_000);
-        let id2 = create_test_invoice(&env, &client, &business, 120_000);
-        let id3 = create_test_invoice(&env, &client, &business, 130_000);
-        let id4 = create_test_invoice(&env, &client, &business, 140_000);
+        let id0 = create_test_invoice(&env, &client, &admin, &business, 100_000);
+        let id1 = create_test_invoice(&env, &client, &admin, &business, 110_000);
+        let id2 = create_test_invoice(&env, &client, &admin, &business, 120_000);
+        let id3 = create_test_invoice(&env, &client, &admin, &business, 130_000);
+        let id4 = create_test_invoice(&env, &client, &admin, &business, 140_000);
 
         let reason = String::from_str(&env, "Dispute");
         let evidence = String::from_str(&env, "Evidence");
@@ -887,7 +886,7 @@ mod test_dispute {
     fn test_regression_resolved_dispute_is_locked() {
         let (env, client, admin) = setup();
         let business = create_verified_business(&env, &client, &admin);
-        let invoice_id = create_test_invoice(&env, &client, &business, 100_000);
+        let invoice_id = create_test_invoice(&env, &client, &admin, &business, 100_000);
 
         client.create_dispute(
             &invoice_id,
@@ -943,7 +942,7 @@ mod test_dispute {
     fn test_regression_resolved_dispute_cannot_reopen() {
         let (env, client, admin) = setup();
         let business = create_verified_business(&env, &client, &admin);
-        let invoice_id = create_test_invoice(&env, &client, &business, 100_000);
+        let invoice_id = create_test_invoice(&env, &client, &admin, &business, 100_000);
 
         client.create_dispute(
             &invoice_id,
@@ -975,7 +974,7 @@ mod test_dispute {
     fn test_regression_resolved_at_is_set_once() {
         let (env, client, admin) = setup();
         let business = create_verified_business(&env, &client, &admin);
-        let invoice_id = create_test_invoice(&env, &client, &business, 100_000);
+        let invoice_id = create_test_invoice(&env, &client, &admin, &business, 100_000);
 
         client.create_dispute(
             &invoice_id,
@@ -1020,7 +1019,7 @@ mod test_dispute {
     fn test_regression_cannot_skip_review_step() {
         let (env, client, admin) = setup();
         let business = create_verified_business(&env, &client, &admin);
-        let invoice_id = create_test_invoice(&env, &client, &business, 100_000);
+        let invoice_id = create_test_invoice(&env, &client, &admin, &business, 100_000);
 
         client.create_dispute(
             &invoice_id,
@@ -1053,7 +1052,7 @@ mod test_dispute {
     fn test_regression_non_admin_cannot_resolve() {
         let (env, client, admin) = setup();
         let business = create_verified_business(&env, &client, &admin);
-        let invoice_id = create_test_invoice(&env, &client, &business, 100_000);
+        let invoice_id = create_test_invoice(&env, &client, &admin, &business, 100_000);
         let attacker = Address::generate(&env);
 
         client.create_dispute(
@@ -1077,7 +1076,7 @@ mod test_dispute {
     fn test_regression_non_admin_cannot_put_under_review() {
         let (env, client, admin) = setup();
         let business = create_verified_business(&env, &client, &admin);
-        let invoice_id = create_test_invoice(&env, &client, &business, 100_000);
+        let invoice_id = create_test_invoice(&env, &client, &admin, &business, 100_000);
         let attacker = Address::generate(&env);
 
         client.create_dispute(
@@ -1097,7 +1096,7 @@ mod test_dispute {
     fn test_regression_review_no_dispute_returns_not_found() {
         let (env, client, admin) = setup();
         let business = create_verified_business(&env, &client, &admin);
-        let invoice_id = create_test_invoice(&env, &client, &business, 100_000);
+        let invoice_id = create_test_invoice(&env, &client, &admin, &business, 100_000);
 
         let result = client.try_put_dispute_under_review(&invoice_id, &admin);
         assert!(result.is_err());
@@ -1111,7 +1110,7 @@ mod test_dispute {
     fn test_regression_resolve_no_dispute_returns_not_found() {
         let (env, client, admin) = setup();
         let business = create_verified_business(&env, &client, &admin);
-        let invoice_id = create_test_invoice(&env, &client, &business, 100_000);
+        let invoice_id = create_test_invoice(&env, &client, &admin, &business, 100_000);
 
         let result =
             client.try_resolve_dispute(&invoice_id, &admin, &String::from_str(&env, "resolution"));
@@ -1126,7 +1125,7 @@ mod test_dispute {
     fn test_regression_double_resolution_preserves_original_fields() {
         let (env, client, admin) = setup();
         let business = create_verified_business(&env, &client, &admin);
-        let invoice_id = create_test_invoice(&env, &client, &business, 100_000);
+        let invoice_id = create_test_invoice(&env, &client, &admin, &business, 100_000);
 
         client.create_dispute(
             &invoice_id,
@@ -1207,7 +1206,7 @@ mod test_dispute {
         let business = create_verified_business(&env, &client, &admin);
 
         // 2000 chars - must succeed
-        let id1 = create_test_invoice(&env, &client, &business, 100_000);
+        let id1 = create_test_invoice(&env, &client, &admin, &business, 100_000);
         let max_evidence = "e".repeat(2000);
         let ok = client.try_create_dispute(
             &id1,
@@ -1218,7 +1217,7 @@ mod test_dispute {
         assert!(ok.is_ok(), "2000-char evidence must be accepted");
 
         // 2001 chars - must fail
-        let id2 = create_test_invoice(&env, &client, &business, 110_000);
+        let id2 = create_test_invoice(&env, &client, &admin, &business, 110_000);
         let over_evidence = "e".repeat(2001);
         let err = client.try_create_dispute(
             &id2,
@@ -1241,7 +1240,7 @@ mod test_dispute {
         let business = create_verified_business(&env, &client, &admin);
 
         // 2000 chars - must succeed
-        let id1 = create_test_invoice(&env, &client, &business, 100_000);
+        let id1 = create_test_invoice(&env, &client, &admin, &business, 100_000);
         client.create_dispute(
             &id1,
             &business,
@@ -1258,7 +1257,7 @@ mod test_dispute {
         assert!(ok.is_ok(), "2000-char resolution must be accepted");
 
         // 2001 chars - must fail
-        let id2 = create_test_invoice(&env, &client, &business, 110_000);
+        let id2 = create_test_invoice(&env, &client, &admin, &business, 110_000);
         client.create_dispute(
             &id2,
             &business,
@@ -1285,7 +1284,7 @@ mod test_dispute {
     fn test_regression_get_details_no_dispute_returns_none() {
         let (env, client, admin) = setup();
         let business = create_verified_business(&env, &client, &admin);
-        let invoice_id = create_test_invoice(&env, &client, &business, 100_000);
+        let invoice_id = create_test_invoice(&env, &client, &admin, &business, 100_000);
 
         let result = client.get_dispute_details(&invoice_id);
         assert!(
@@ -1301,8 +1300,8 @@ mod test_dispute {
         let (env, client, admin) = setup();
         let business = create_verified_business(&env, &client, &admin);
 
-        let id1 = create_test_invoice(&env, &client, &business, 100_000);
-        let id2 = create_test_invoice(&env, &client, &business, 200_000);
+        let id1 = create_test_invoice(&env, &client, &admin, &business, 100_000);
+        let id2 = create_test_invoice(&env, &client, &admin, &business, 200_000);
 
         let reason = String::from_str(&env, "reason");
         let evidence = String::from_str(&env, "evidence");

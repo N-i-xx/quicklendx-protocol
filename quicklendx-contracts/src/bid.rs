@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use core::cmp::Ordering;
 use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env, Symbol, Vec};
 

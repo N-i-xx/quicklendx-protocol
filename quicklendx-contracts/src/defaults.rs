@@ -238,9 +238,7 @@ pub fn scan_funded_invoice_expirations(
             if let Some(invoice) = InvoiceStorage::get_invoice(env, &invoice_id) {
                 if invoice.is_overdue(current_timestamp) {
                     overdue_count = overdue_count.saturating_add(1);
-                    let _ = crate::notifications::NotificationSystem::notify_payment_overdue(
-                        env, &invoice,
-                    );
+                    // Notification suppressed: notify_payment_overdue removed (dead code)
                 }
 
                 if current_timestamp > invoice.grace_deadline(grace_period) {

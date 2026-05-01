@@ -25,11 +25,11 @@ use super::*;
 use crate::audit::{AuditOperationFilter, AuditQueryFilter};
 use crate::errors::QuickLendXError;
 use crate::events::{
-    TOPIC_BID_ACCEPTED, TOPIC_BID_EXPIRED, TOPIC_BID_PLACED,
-    TOPIC_BID_WITHDRAWN, TOPIC_DISPUTE_CREATED, TOPIC_DISPUTE_RESOLVED,
-    TOPIC_DISPUTE_UNDER_REVIEW, TOPIC_ESCROW_CREATED, TOPIC_ESCROW_REFUNDED,
-    TOPIC_ESCROW_RELEASED, TOPIC_INVOICE_CANCELLED, TOPIC_INVOICE_DEFAULTED,
-    TOPIC_INVOICE_EXPIRED, TOPIC_INVOICE_FUNDED, TOPIC_INVOICE_SETTLED,
+    DisputeCreated as _, DisputeResolved as _, DisputeUnderReview as _, TOPIC_BID_ACCEPTED,
+    TOPIC_BID_EXPIRED, TOPIC_BID_PLACED, TOPIC_BID_WITHDRAWN, TOPIC_DISPUTE_CREATED,
+    TOPIC_DISPUTE_RESOLVED, TOPIC_DISPUTE_UNDER_REVIEW, TOPIC_ESCROW_CREATED,
+    TOPIC_ESCROW_REFUNDED, TOPIC_ESCROW_RELEASED, TOPIC_INVOICE_CANCELLED,
+    TOPIC_INVOICE_DEFAULTED, TOPIC_INVOICE_EXPIRED, TOPIC_INVOICE_FUNDED, TOPIC_INVOICE_SETTLED,
     TOPIC_INVOICE_SETTLED_FINAL, TOPIC_INVOICE_UPLOADED, TOPIC_INVOICE_VERIFIED,
     TOPIC_PARTIAL_PAYMENT, TOPIC_PAYMENT_RECORDED,
 };
@@ -38,7 +38,209 @@ use crate::payments::EscrowStatus;
 use soroban_sdk::{
     testutils::{Address as _, Events, Ledger},
     token, Address, BytesN, Env, Map, String, Symbol, TryFromVal, Val, Vec,
+    contracttype,
 };
+
+#[contracttype]
+pub struct InvoiceUploaded {
+    pub invoice_id: BytesN<32>,
+    pub business: Address,
+    pub amount: i128,
+    pub currency: Address,
+    pub due_date: u64,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub struct InvoiceVerified {
+    pub invoice_id: BytesN<32>,
+    pub business: Address,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub struct InvoiceCancelled {
+    pub invoice_id: BytesN<32>,
+    pub business: Address,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub struct InvoiceSettled {
+    pub invoice_id: BytesN<32>,
+    pub business: Address,
+    pub investor: Address,
+    pub investor_return: i128,
+    pub platform_fee: i128,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub struct InvoiceDefaulted {
+    pub invoice_id: BytesN<32>,
+    pub business: Address,
+    pub investor: Address,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub struct InvoiceExpired {
+    pub invoice_id: BytesN<32>,
+    pub business: Address,
+    pub due_date: u64,
+}
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub struct PartialPayment {
+    pub invoice_id: BytesN<32>,
+    pub business: Address,
+    pub payment_amount: i128,
+    pub total_paid: i128,
+    pub progress: u32,
+    pub transaction_id: String,
+}
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub struct PaymentRecorded {
+    pub invoice_id: BytesN<32>,
+    pub payer: Address,
+    pub amount: i128,
+    pub transaction_id: String,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub struct InvoiceSettledFinal {
+    pub invoice_id: BytesN<32>,
+    pub business: Address,
+    pub investor: Address,
+    pub total_paid: i128,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub struct BidPlaced {
+    pub bid_id: BytesN<32>,
+    pub invoice_id: BytesN<32>,
+    pub investor: Address,
+    pub bid_amount: i128,
+    pub expected_return: i128,
+    pub timestamp: u64,
+    pub expiration_timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub struct BidAccepted {
+    pub bid_id: BytesN<32>,
+    pub invoice_id: BytesN<32>,
+    pub investor: Address,
+    pub business: Address,
+    pub bid_amount: i128,
+    pub expected_return: i128,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub struct BidWithdrawn {
+    pub bid_id: BytesN<32>,
+    pub invoice_id: BytesN<32>,
+    pub investor: Address,
+    pub bid_amount: i128,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub struct BidExpired {
+    pub bid_id: BytesN<32>,
+    pub invoice_id: BytesN<32>,
+    pub investor: Address,
+    pub bid_amount: i128,
+    pub expiration_timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub struct EscrowCreated {
+    pub escrow_id: BytesN<32>,
+    pub invoice_id: BytesN<32>,
+    pub investor: Address,
+    pub business: Address,
+    pub amount: i128,
+}
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub struct EscrowReleased {
+    pub escrow_id: BytesN<32>,
+    pub invoice_id: BytesN<32>,
+    pub business: Address,
+    pub amount: i128,
+}
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub struct EscrowRefunded {
+    pub escrow_id: BytesN<32>,
+    pub invoice_id: BytesN<32>,
+    pub investor: Address,
+    pub amount: i128,
+}
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub struct InvoiceFunded {
+    pub invoice_id: BytesN<32>,
+    pub investor: Address,
+    pub amount: i128,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub struct DisputeCreated {
+    pub invoice_id: BytesN<32>,
+    pub created_by: Address,
+    pub reason: String,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub struct DisputeUnderReview {
+    pub invoice_id: BytesN<32>,
+    pub reviewed_by: Address,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub struct DisputeResolved {
+    pub invoice_id: BytesN<32>,
+    pub resolved_by: Address,
+    pub resolution: String,
+    pub timestamp: u64,
+}
+
+/// Helper to get the latest payload of a given topic and decode it into a struct.
+fn latest_payload<T>(env: &Env, topic_str: &str) -> T
+where
+    T: TryFromVal<Env, Val>,
+{
+    let val = latest_payload_val(env, topic_str);
+    T::try_from_val(env, &val).expect("failed to decode event payload")
+}
 
 // ============================================================================
 // Constants

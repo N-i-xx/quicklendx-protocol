@@ -16,7 +16,7 @@ use crate::payments::transfer_funds;
 use crate::storage::InvoiceStorage;
 use crate::types::InvestmentStatus;
 use crate::types::{Invoice, InvoiceStatus, PaymentRecord as InvoicePaymentRecord};
-use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env, String, Vec};
+use soroban_sdk::{contractevent, contracttype, Address, BytesN, Env, String, Vec};
 
 const MAX_INLINE_PAYMENT_HISTORY: u32 = 32;
 
@@ -339,6 +339,7 @@ pub fn get_invoice_progress(
 }
 
 /// Returns the total number of recorded payments for an invoice.
+#[allow(dead_code)]
 pub fn get_payment_count(env: &Env, invoice_id: &BytesN<32>) -> Result<u32, QuickLendXError> {
     ensure_invoice_exists(env, invoice_id)?;
     Ok(get_payment_count_internal(env, invoice_id))
@@ -364,6 +365,7 @@ pub fn get_payment_record(
 /// * `limit` - Maximum number of records to return.
 ///
 /// Records are returned in chronological order (index 0 = first payment).
+#[allow(dead_code)]
 pub fn get_payment_records(
     env: &Env,
     invoice_id: &BytesN<32>,
@@ -391,6 +393,7 @@ pub fn get_payment_records(
 }
 
 /// Returns whether an invoice has been finalized (settlement completed).
+#[allow(dead_code)]
 pub fn is_invoice_finalized(env: &Env, invoice_id: &BytesN<32>) -> Result<bool, QuickLendXError> {
     ensure_invoice_exists(env, invoice_id)?;
     Ok(is_finalized(env, invoice_id))
@@ -592,6 +595,15 @@ fn make_settlement_nonce(env: &Env) -> String {
     String::from_str(env, "settlement")
 }
 
+#[contractevent]
+pub struct PaymentRecordedEvent {
+    pub invoice_id: BytesN<32>,
+    pub payer: Address,
+    pub applied_amount: i128,
+    pub total_paid: i128,
+    pub status: InvoiceStatus,
+}
+
 fn emit_payment_recorded(
     env: &Env,
     invoice_id: &BytesN<32>,
@@ -600,16 +612,21 @@ fn emit_payment_recorded(
     total_paid: i128,
     status: &InvoiceStatus,
 ) {
-    env.events().publish(
-        (symbol_short!("pay_rec"),),
-        (
-            invoice_id.clone(),
-            payer.clone(),
-            applied_amount,
-            total_paid,
-            status.clone(),
-        ),
-    );
+    PaymentRecordedEvent {
+        invoice_id: invoice_id.clone(),
+        payer: payer.clone(),
+        applied_amount,
+        total_paid,
+        status: status.clone(),
+    }
+    .publish(env);
+}
+
+#[contractevent]
+pub struct InvoiceSettledFinalEvent {
+    pub invoice_id: BytesN<32>,
+    pub final_amount: i128,
+    pub paid_at: u64,
 }
 
 fn emit_invoice_settled_final(
@@ -618,8 +635,10 @@ fn emit_invoice_settled_final(
     final_amount: i128,
     paid_at: u64,
 ) {
-    env.events().publish(
-        (symbol_short!("inv_stlf"),),
-        (invoice_id.clone(), final_amount, paid_at),
-    );
+    InvoiceSettledFinalEvent {
+        invoice_id: invoice_id.clone(),
+        final_amount,
+        paid_at,
+    }
+    .publish(env);
 }

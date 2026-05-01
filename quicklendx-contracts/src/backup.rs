@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::errors::QuickLendXError;
 use crate::types::Invoice;
 use soroban_sdk::{contracttype, symbol_short, BytesN, Env, String, Vec};
@@ -291,45 +292,6 @@ impl BackupStorage {
     /// Returns an error *only* in step 1.  Steps 2-4 are infallible on a
     /// well-formed Soroban environment; panics in those steps indicate a
     /// platform bug, not a contract bug.
-    ///
-    /// # Security
-    ///
-    /// - The caller **must** enforce admin authentication before invoking this
-    ///   function.  The contract entry point is responsible for `require_auth`.
-    /// - Validate -> clear -> restore is the only safe ordering.  Clearing
-    ///   before validating would leave the contract in an empty state if the
-    ///   backup turns out to be corrupt.
-    /// - Restoring without clearing first would overlay backup data on stale
-    ///   indexes, causing ghost entries in status/category/tag buckets for
-    ///   any invoices that existed before the restore.
-    pub fn restore_from_backup(env: &Env, backup_id: &BytesN<32>) -> Result<u32, QuickLendXError> {
-        //  Step 1: validate before mutating anything
-        Self::validate_backup(env, backup_id)?;
-
-        // Fetch the validated payload.
-        let data =
-            Self::get_backup_data(env, backup_id).ok_or(QuickLendXError::StorageKeyNotFound)?;
-
-        let restored_count = data.len();
-
-        //  Step 2: atomically clear all existing invoice state
-        crate::storage::InvoiceStorage::clear_all(env);
-
-        //  Step 3: re-register every invoice, rebuilding all indexes
-        for invoice in data.iter() {
-            crate::storage::InvoiceStorage::store_invoice(env, &invoice);
-        }
-
-        // Step 4: mark the backup as archived to prevent re-use
-        if let Some(mut backup) = Self::get_backup(env, backup_id) {
-            backup.status = BackupStatus::Archived;
-            // Ignore the result - the restore itself has already succeeded.
-            let _ = Self::update_backup(env, &backup);
-        }
-
-        Ok(restored_count)
-    }
-
     /// Clean up old backups based on the retention policy.
     ///
     /// Removes backups that exceed `max_age_seconds`, then removes the oldest

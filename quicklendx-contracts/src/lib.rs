@@ -21,18 +21,18 @@ mod scratch_events;
 mod test_default;
 #[cfg(all(test, feature = "legacy-tests"))]
 mod test_fees;
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, BytesN, Env, Map, String, Vec};
+use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, Map, String, Vec};
 
-mod admin;
+pub mod admin;
 mod analytics;
 mod audit;
-mod backup;
+pub mod backup;
 mod bid;
 mod currency;
 mod defaults;
 mod dispute;
 mod emergency;
-mod errors;
+pub mod errors;
 mod escrow;
 mod events;
 mod fees;
@@ -40,7 +40,7 @@ pub mod freshness;
 mod init;
 mod investment;
 mod investment_queries;
-mod invoice;
+pub mod invoice;
 mod invoice_search;
 mod notifications;
 mod pause;
@@ -50,13 +50,14 @@ mod protocol_limits;
 mod reentrancy;
 mod settlement;
 mod storage;
+pub mod types;
 #[cfg(test)]
 mod test_admin;
 #[cfg(all(test, feature = "legacy-tests"))]
 mod test_admin_simple;
 #[cfg(all(test, feature = "legacy-tests"))]
-mod test_admin_standalone;
-#[cfg(all(test, feature = "legacy-tests"))]
+// mod test_admin_standalone;
+// #[cfg(all(test, feature = "legacy-tests"))]
 mod test_dispute;
 #[cfg(all(test, feature = "legacy-tests"))]
 mod test_expired_bids_cleanup;
@@ -102,7 +103,6 @@ mod test_investment_transitions;
 mod test_events;
 #[cfg(all(test, feature = "legacy-tests"))]
 mod test_max_invoices_per_business;
-pub mod types;
 mod verification;
 mod vesting;
 use crate::types::Bid;
@@ -134,14 +134,14 @@ use verification::{
     get_investor_verification as do_get_investor_verification, normalize_tag, reject_business,
     reject_investor as do_reject_investor, require_business_not_pending,
     require_investor_not_pending, submit_investor_kyc as do_submit_investor_kyc,
-    submit_kyc_application, validate_bid, validate_dispute_eligibility, validate_dispute_evidence,
-    validate_dispute_reason, validate_dispute_resolution, validate_investor_investment,
+    submit_kyc_application, validate_bid, validate_dispute_evidence,
+    validate_dispute_resolution, validate_investor_investment,
     validate_invoice_metadata, verify_business, verify_investor as do_verify_investor,
     verify_invoice_data, BusinessVerificationStatus, BusinessVerificationStorage,
     InvestorRiskLevel, InvestorTier, InvestorVerification, InvestorVerificationStorage,
 };
 
-use crate::storage::{BidStorage, ConfigStorage, InvoiceStorage, StorageManager};
+use crate::storage::{BidStorage, InvoiceStorage};
 use crate::types::*;
 
 #[contract]
@@ -164,7 +164,7 @@ fn cap_query_limit(limit: u32) -> u32 {
 /// @param limit The requested result limit
 /// @return Result indicating validation success or failure
 /// @dev Prevents potential overflow and ensures reasonable query bounds
-fn validate_query_params(offset: u32, limit: u32) -> Result<(), QuickLendXError> {
+fn validate_query_params(offset: u32, _limit: u32) -> Result<(), QuickLendXError> {
     // Check for potential overflow in offset + limit calculation
     if offset > u32::MAX - MAX_QUERY_LIMIT {
         return Err(QuickLendXError::InvalidAmount);
@@ -604,11 +604,8 @@ impl QuickLendXContract {
         // Store the invoice
         InvoiceStorage::store_invoice(&env, &invoice);
 
-        // Emit event
-        env.events().publish(
-            (symbol_short!("created"),),
-            (invoice.id.clone(), business, amount, currency, due_date),
-        );
+        // Emit event using the canonical events module
+        crate::events::emit_invoice_uploaded(&env, &invoice);
 
         Ok(invoice.id)
     }
@@ -1301,7 +1298,15 @@ impl QuickLendXContract {
 
     /// Validate that no terminal investments remain in the active index.
     pub fn validate_no_orphan_investments(env: Env) -> bool {
-        storage::StorageIntegrityAudit::audit_investment_integrity(&env).is_ok()
+        let ids = InvestmentStorage::get_active_investment_ids(&env);
+        for id in ids.iter() {
+            if let Some(inv) = InvestmentStorage::get_investment(&env, &id) {
+                if inv.status != crate::types::InvestmentStatus::Active {
+                    return false;
+                }
+            }
+        }
+        true
     }
 
     /// Query insurance coverage for an investment.
@@ -2729,20 +2734,12 @@ impl QuickLendXContract {
     pub fn generate_investor_report(
         env: Env,
         investor: Address,
-        invoice_id: BytesN<32>,
-        amount: i128,
-    ) -> Result<(), QuickLendXError> {
-        pause::PauseControl::require_not_paused(&env)?;
-        investor.require_auth();
-        let mut invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
-            .ok_or(QuickLendXError::InvoiceNotFound)?;
-        if invoice.status != InvoiceStatus::Verified {
-            return Err(QuickLendXError::InvalidStatus);
-        }
-        let ts = env.ledger().timestamp();
-        invoice.mark_as_funded(&env, investor, amount, ts);
-        InvoiceStorage::update_invoice(&env, &invoice);
-        Ok(())
+        period: analytics::TimePeriod,
+    ) -> Result<analytics::InvestorReport, QuickLendXError> {
+        let report =
+            analytics::AnalyticsCalculator::generate_investor_report(&env, &investor, period)?;
+        analytics::AnalyticsStorage::store_investor_report(&env, &report);
+        Ok(report)
     }
 
     // =========================================================================

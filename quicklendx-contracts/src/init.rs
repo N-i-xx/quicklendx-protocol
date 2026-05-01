@@ -33,7 +33,7 @@
 
 use crate::admin::{AdminStorage, ADMIN_INITIALIZED_KEY};
 use crate::errors::QuickLendXError;
-use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol, Vec};
+use soroban_sdk::{contractevent, contracttype, symbol_short, Address, Env, Symbol, Vec};
 
 /// Storage key for protocol initialization flag
 const PROTOCOL_INITIALIZED_KEY: Symbol = symbol_short!("proto_in");
@@ -656,6 +656,16 @@ fn emit_protocol_initialized(
     );
 }
 
+/// Protocol configuration update event
+#[contractevent]
+pub struct ProtocolConfigUpdatedEvent {
+    pub admin: Address,
+    pub min_invoice_amount: i128,
+    pub max_due_date_days: u64,
+    pub grace_period_seconds: u64,
+    pub timestamp: u64,
+}
+
 /// Emit protocol configuration update event
 fn emit_protocol_config_updated(
     env: &Env,
@@ -664,30 +674,48 @@ fn emit_protocol_config_updated(
     max_due_date_days: u64,
     grace_period_seconds: u64,
 ) {
-    env.events().publish(
-        (symbol_short!("proto_cfg"),),
-        (
-            admin.clone(),
-            min_invoice_amount,
-            max_due_date_days,
-            grace_period_seconds,
-            env.ledger().timestamp(),
-        ),
-    );
+    ProtocolConfigUpdatedEvent {
+        admin: admin.clone(),
+        min_invoice_amount,
+        max_due_date_days,
+        grace_period_seconds,
+        timestamp: env.ledger().timestamp(),
+    }
+    .publish(env);
+}
+
+/// Fee configuration update event
+#[contractevent]
+pub struct FeeConfigUpdatedEvent {
+    pub admin: Address,
+    pub fee_bps: u32,
+    pub timestamp: u64,
 }
 
 /// Emit fee configuration update event
 fn emit_fee_config_updated(env: &Env, admin: &Address, fee_bps: u32) {
-    env.events().publish(
-        (symbol_short!("fee_cfg"),),
-        (admin.clone(), fee_bps, env.ledger().timestamp()),
-    );
+    FeeConfigUpdatedEvent {
+        admin: admin.clone(),
+        fee_bps,
+        timestamp: env.ledger().timestamp(),
+    }
+    .publish(env);
+}
+
+/// Treasury update event
+#[contractevent]
+pub struct TreasuryUpdatedEvent {
+    pub admin: Address,
+    pub treasury: Address,
+    pub timestamp: u64,
 }
 
 /// Emit treasury update event
 fn emit_treasury_updated(env: &Env, admin: &Address, treasury: &Address) {
-    env.events().publish(
-        (symbol_short!("trsr_upd"),),
-        (admin.clone(), treasury.clone(), env.ledger().timestamp()),
-    );
+    TreasuryUpdatedEvent {
+        admin: admin.clone(),
+        treasury: treasury.clone(),
+        timestamp: env.ledger().timestamp(),
+    }
+    .publish(env);
 }

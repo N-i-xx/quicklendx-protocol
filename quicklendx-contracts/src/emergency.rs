@@ -3,6 +3,7 @@
 //! Admin-only, timelocked recovery of tokens sent to the contract by mistake or
 //! stuck due to bugs. Use only as a last resort; see docs/contracts/emergency-recovery.md.
 //!
+#![allow(dead_code)]
 //! # Security hardening
 //! - Timelock integrity: Withdrawal cannot execute until unlock_at has passed.
 //! - Expiration: Withdrawal expires if not executed within EXPIRATION_WINDOW after unlock_at.

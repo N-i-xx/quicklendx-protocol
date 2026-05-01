@@ -75,7 +75,7 @@ fi
 # ── Optional wasm-opt pass ─────────────────────────────────────────────────────
 if command -v wasm-opt &>/dev/null; then
   echo "==> Running wasm-opt -Oz to reduce size..."
-  wasm-opt --enable-bulk-memory -Oz "$WASM_PATH" -o "$WASM_PATH.opt" \
+  wasm-opt --enable-bulk-memory --enable-sign-ext -Oz "$WASM_PATH" -o "$WASM_PATH.opt" \
     && mv "$WASM_PATH.opt" "$WASM_PATH"
 fi
 

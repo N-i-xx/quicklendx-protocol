@@ -1,8 +1,7 @@
+#![allow(dead_code)]
 use crate::protocol_limits::{
     check_string_length, MAX_NOTIFICATION_MESSAGE_LENGTH, MAX_NOTIFICATION_TITLE_LENGTH,
 };
-use crate::types::Bid;
-use crate::types::{Invoice, InvoiceStatus};
 use soroban_sdk::{contracttype, symbol_short, Address, Bytes, BytesN, Env, Map, String, Vec};
 
 /// Notification types for different events
@@ -261,6 +260,7 @@ impl NotificationSystem {
         Self::add_to_user_notifications(env, &recipient, &notification.id);
 
         // Emit notification event
+        #[allow(deprecated)]
         env.events().publish(
             (symbol_short!("notif"),),
             (
@@ -308,6 +308,7 @@ impl NotificationSystem {
         Self::store_notification(env, &notification);
 
         // Emit status update event
+        #[allow(deprecated)]
         env.events().publish(
             (symbol_short!("n_status"),),
             (notification_id.clone(), status),
@@ -344,6 +345,7 @@ impl NotificationSystem {
         env.storage().instance().set(&key, &preferences);
 
         // Emit preferences update event
+        #[allow(deprecated)]
         env.events()
             .publish((symbol_short!("pref_up"),), (user.clone(),));
     }
@@ -398,272 +400,3 @@ impl NotificationSystem {
     }
 }
 
-// Notification helper functions for common scenarios
-impl NotificationSystem {
-    /// Create invoice created notification
-    pub fn notify_invoice_created(
-        env: &Env,
-        invoice: &Invoice,
-    ) -> Result<(), crate::errors::QuickLendXError> {
-        let title = String::from_str(env, "Invoice Created");
-        let message = String::from_str(
-            env,
-            "Your invoice has been successfully created and is pending verification",
-        );
-
-        Self::create_notification(
-            env,
-            invoice.business.clone(),
-            NotificationType::InvoiceCreated,
-            NotificationPriority::Medium,
-            title,
-            message,
-            Some(invoice.id.clone()),
-        )?;
-
-        Ok(())
-    }
-
-    /// Create invoice verified notification
-    pub fn notify_invoice_verified(
-        env: &Env,
-        invoice: &Invoice,
-    ) -> Result<(), crate::errors::QuickLendXError> {
-        let title = String::from_str(env, "Invoice Verified");
-        let message = String::from_str(
-            env,
-            "Your invoice has been verified and is now available for funding",
-        );
-
-        Self::create_notification(
-            env,
-            invoice.business.clone(),
-            NotificationType::InvoiceVerified,
-            NotificationPriority::High,
-            title,
-            message,
-            Some(invoice.id.clone()),
-        )?;
-
-        Ok(())
-    }
-
-    /// Create invoice status changed notification
-    pub fn notify_invoice_status_changed(
-        env: &Env,
-        invoice: &Invoice,
-        old_status: &InvoiceStatus,
-        new_status: &InvoiceStatus,
-    ) -> Result<(), crate::errors::QuickLendXError> {
-        let title = String::from_str(env, "Invoice Status Updated");
-
-        let status_text = match (old_status, new_status) {
-            (InvoiceStatus::Pending, InvoiceStatus::Verified) => {
-                "Your invoice has been verified and is now available for funding"
-            }
-            (InvoiceStatus::Verified, InvoiceStatus::Funded) => {
-                "Your invoice has been funded by an investor"
-            }
-            (InvoiceStatus::Funded, InvoiceStatus::Paid) => {
-                "Your invoice has been paid successfully"
-            }
-            (_, InvoiceStatus::Defaulted) => "Your invoice has been marked as defaulted",
-            _ => "Your invoice status has been updated",
-        };
-
-        let message = String::from_str(env, status_text);
-
-        let priority = match new_status {
-            InvoiceStatus::Funded | InvoiceStatus::Paid => NotificationPriority::High,
-            InvoiceStatus::Defaulted => NotificationPriority::Critical,
-            _ => NotificationPriority::Medium,
-        };
-
-        Self::create_notification(
-            env,
-            invoice.business.clone(),
-            NotificationType::InvoiceStatusChanged,
-            priority.clone(),
-            title.clone(),
-            message.clone(),
-            Some(invoice.id.clone()),
-        )?;
-
-        // Notify investor if applicable
-        if let Some(investor) = &invoice.investor {
-            Self::create_notification(
-                env,
-                investor.clone(),
-                NotificationType::InvoiceStatusChanged,
-                priority,
-                title,
-                message,
-                Some(invoice.id.clone()),
-            )?;
-        }
-        Ok(())
-    }
-
-    /// Create payment overdue notification
-    pub fn notify_payment_overdue(
-        env: &Env,
-        invoice: &Invoice,
-    ) -> Result<(), crate::errors::QuickLendXError> {
-        let title = String::from_str(env, "Payment Overdue");
-        let message = String::from_str(env, "Your invoice payment is overdue");
-
-        Self::create_notification(
-            env,
-            invoice.business.clone(),
-            NotificationType::PaymentOverdue,
-            NotificationPriority::Critical,
-            title,
-            message,
-            Some(invoice.id.clone()),
-        )?;
-
-        // Notify investor
-        if let Some(investor) = &invoice.investor {
-            let investor_title = String::from_str(env, "Invoice Payment Overdue");
-            let investor_message =
-                String::from_str(env, "An invoice you funded has an overdue payment");
-
-            Self::create_notification(
-                env,
-                investor.clone(),
-                NotificationType::PaymentOverdue,
-                NotificationPriority::Critical,
-                investor_title,
-                investor_message,
-                Some(invoice.id.clone()),
-            )?;
-        }
-
-        Ok(())
-    }
-
-    /// Create bid received notification for business
-    pub fn notify_bid_received(
-        env: &Env,
-        invoice: &Invoice,
-        _: &Bid, //bid
-    ) -> Result<(), crate::errors::QuickLendXError> {
-        let title = String::from_str(env, "New Bid Received");
-        let message = String::from_str(env, "A new bid has been placed on your invoice");
-
-        Self::create_notification(
-            env,
-            invoice.business.clone(),
-            NotificationType::BidReceived,
-            NotificationPriority::Medium,
-            title,
-            message,
-            Some(invoice.id.clone()),
-        )?;
-
-        Ok(())
-    }
-
-    /// Create bid accepted notification for investor
-    pub fn notify_bid_accepted(
-        env: &Env,
-        invoice: &Invoice,
-        bid: &Bid,
-    ) -> Result<(), crate::errors::QuickLendXError> {
-        let title = String::from_str(env, "Bid Accepted");
-        let message = String::from_str(
-            env,
-            "Your bid has been accepted and funds are being escrowed",
-        );
-
-        Self::create_notification(
-            env,
-            bid.investor.clone(),
-            NotificationType::BidAccepted,
-            NotificationPriority::High,
-            title,
-            message,
-            Some(invoice.id.clone()),
-        )?;
-
-        Ok(())
-    }
-
-    /// Create payment received notification
-    pub fn notify_payment_received(
-        env: &Env,
-        invoice: &Invoice,
-        _: i128, //amount
-    ) -> Result<(), crate::errors::QuickLendXError> {
-        let title = String::from_str(env, "Payment Received");
-        let message = String::from_str(env, "Payment has been received for your invoice");
-
-        // Notify business
-        Self::create_notification(
-            env,
-            invoice.business.clone(),
-            NotificationType::PaymentReceived,
-            NotificationPriority::High,
-            title.clone(),
-            message.clone(),
-            Some(invoice.id.clone()),
-        )?;
-
-        // Notify investor if applicable
-        if let Some(investor) = &invoice.investor {
-            let investor_title = String::from_str(env, "Investment Payment Received");
-            let investor_message =
-                String::from_str(env, "Payment has been received for an invoice you funded");
-
-            Self::create_notification(
-                env,
-                investor.clone(),
-                NotificationType::PaymentReceived,
-                NotificationPriority::High,
-                investor_title,
-                investor_message,
-                Some(invoice.id.clone()),
-            )?;
-        }
-
-        Ok(())
-    }
-
-    /// Create invoice defaulted notification
-    pub fn notify_invoice_defaulted(
-        env: &Env,
-        invoice: &Invoice,
-    ) -> Result<(), crate::errors::QuickLendXError> {
-        let title = String::from_str(env, "Invoice Defaulted");
-        let message = String::from_str(env, "Your invoice has been marked as defaulted");
-
-        // Notify business
-        Self::create_notification(
-            env,
-            invoice.business.clone(),
-            NotificationType::InvoiceDefaulted,
-            NotificationPriority::Critical,
-            title.clone(),
-            message.clone(),
-            Some(invoice.id.clone()),
-        )?;
-
-        // Notify investor if applicable
-        if let Some(investor) = &invoice.investor {
-            let investor_title = String::from_str(env, "Investment Defaulted");
-            let investor_message = String::from_str(env, "An invoice you funded has defaulted");
-
-            Self::create_notification(
-                env,
-                investor.clone(),
-                NotificationType::InvoiceDefaulted,
-                NotificationPriority::Critical,
-                investor_title,
-                investor_message,
-                Some(invoice.id.clone()),
-            )?;
-        }
-
-        Ok(())
-    }
-}

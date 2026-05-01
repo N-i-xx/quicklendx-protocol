@@ -209,6 +209,7 @@ fn maybe_optimise(wasm_path: &PathBuf) -> (PathBuf, bool) {
         let result = Command::new(bin)
             .args([
                 "--enable-bulk-memory",
+                "--enable-sign-ext",
                 "-Oz",
                 wasm_path.to_string_lossy().as_ref(),
                 "-o",

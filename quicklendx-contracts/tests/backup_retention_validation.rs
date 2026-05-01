@@ -1,9 +1,10 @@
-#![cfg(feature = "legacy-tests")]
-
-use quicklendx_contracts::{types::InvoiceCategory, QuickLendXContract, QuickLendXContractClient};
+use quicklendx_contracts::backup::{BackupStatus, BackupStorage};
+use quicklendx_contracts::errors::QuickLendXError;
+use quicklendx_contracts::types::{InvoiceCategory, InvoiceStatus};
+use quicklendx_contracts::{QuickLendXContract, QuickLendXContractClient};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
-    Address, BytesN, Bytes, Env, Vec,
+    Address, BytesN, Env, String, Vec,
 };
 
 fn setup() -> (Env, QuickLendXContractClient<'static>, Address) {
@@ -29,24 +30,22 @@ fn create_invoice(
 ) -> BytesN<32> {
     let currency = Address::generate(env);
     let due_date = env.ledger().timestamp() + 86_400;
-    client
-        .store_invoice(
-            business,
+    client.store_invoice(
+        business,
             &amount,
             &currency,
             &due_date,
-            &Bytes::from_slice(env, description.as_bytes()),
+            &String::from_str(env, description),
             &InvoiceCategory::Services,
             &Vec::new(env),
         )
-        .expect("store_invoice must succeed for verified business")
 }
 
 /// Create a verified business (KYC submitted + approved).
 fn verified_business(env: &Env, client: &QuickLendXContractClient, admin: &Address) -> Address {
     let business = Address::generate(env);
-    client.submit_kyc_application(&business, &Bytes::from_slice(env, b"kyc-data"));
-    client.verify_business(admin, &business).expect("verify_business must succeed");
+    client.submit_kyc_application(&business, &String::from_str(env, "kyc-data"));
+    client.verify_business(admin, &business);
     business
 }
 
@@ -62,7 +61,7 @@ fn test_restore_ordering_validate_before_clear() {
     let business = verified_business(&env, &client, &admin);
 
     let invoice_1 = create_invoice(&env, &client, &admin, &business, 1_000, "Invoice A");
-    let backup_id = client.create_backup(&admin).expect("backup must succeed");
+    let backup_id = client.create_backup(&admin);
 
     let invoice_2 = create_invoice(&env, &client, &admin, &business, 2_000, "Invoice B");
     assert_eq!(client.get_total_invoice_count(), 2);
@@ -90,13 +89,13 @@ fn test_restore_ordering_clear_before_restore() {
     let business = verified_business(&env, &client, &admin);
 
     let invoice_1 = create_invoice(&env, &client, &admin, &business, 1_000, "Invoice A");
-    let backup_id = client.create_backup(&admin).expect("backup must succeed");
+    let backup_id = client.create_backup(&admin);
 
     let invoice_2 = create_invoice(&env, &client, &admin, &business, 2_000, "Invoice B");
     let invoice_3 = create_invoice(&env, &client, &admin, &business, 3_000, "Invoice C");
     assert_eq!(client.get_total_invoice_count(), 3);
 
-    client.restore_backup(&admin, &backup_id).expect("restore must succeed");
+    client.restore_backup(&admin, &backup_id);
 
     // Only the backed-up invoice should exist
     assert_eq!(client.get_total_invoice_count(), 1);
@@ -113,12 +112,12 @@ fn test_restore_ordering_archive_after_restore() {
     let business = verified_business(&env, &client, &admin);
 
     create_invoice(&env, &client, &admin, &business, 1_000, "Invoice A");
-    let backup_id = client.create_backup(&admin).expect("backup must succeed");
+    let backup_id = client.create_backup(&admin);
 
     let before = client.get_backup_details(&backup_id).unwrap();
     assert_eq!(before.status, BackupStatus::Active);
 
-    client.restore_backup(&admin, &backup_id).expect("restore must succeed");
+    client.restore_backup(&admin, &backup_id);
 
     let after = client.get_backup_details(&backup_id).unwrap();
     assert_eq!(after.status, BackupStatus::Archived);
@@ -152,10 +151,10 @@ fn test_repeated_restore_is_blocked_via_archival() {
     let business = verified_business(&env, &client, &admin);
 
     create_invoice(&env, &client, &admin, &business, 1_000, "Invoice A");
-    let backup_id = client.create_backup(&admin).expect("backup must succeed");
+    let backup_id = client.create_backup(&admin);
 
     // First restore succeeds
-    client.restore_backup(&admin, &backup_id).expect("first restore must succeed");
+    client.restore_backup(&admin, &backup_id);
     assert_eq!(client.get_total_invoice_count(), 1);
 
     // Second restore must fail with OperationNotAllowed
@@ -179,10 +178,10 @@ fn test_restore_produces_identical_state_when_repeated() {
     let business = verified_business(&env, &client, &admin);
 
     let invoice_1 = create_invoice(&env, &client, &admin, &business, 1_000, "Invoice A");
-    let backup_id = client.create_backup(&admin).expect("backup must succeed");
+    let backup_id = client.create_backup(&admin);
 
     // First restore
-    client.restore_backup(&admin, &backup_id).expect("first restore must succeed");
+    client.restore_backup(&admin, &backup_id);
     assert_eq!(client.get_total_invoice_count(), 1);
 
     // Manually reset backup status to Active
@@ -191,7 +190,7 @@ fn test_restore_produces_identical_state_when_repeated() {
     env.storage().instance().set(&backup_id, &backup);
 
     // Second restore — should produce identical state
-    client.restore_backup(&admin, &backup_id).expect("second restore must succeed");
+    client.restore_backup(&admin, &backup_id);
 
     assert_eq!(client.get_total_invoice_count(), 1);
     assert!(client.try_get_invoice(&invoice_1).is_ok());
@@ -204,10 +203,10 @@ fn test_archived_backup_cannot_be_restored() {
     let business = verified_business(&env, &client, &admin);
 
     create_invoice(&env, &client, &admin, &business, 1_000, "Invoice A");
-    let backup_id = client.create_backup(&admin).expect("backup must succeed");
+    let backup_id = client.create_backup(&admin);
 
     // Archive the backup manually
-    client.archive_backup(&admin, &backup_id).expect("archive must succeed");
+    client.archive_backup(&admin, &backup_id);
 
     // Restore must fail
     let result = client.try_restore_backup(&admin, &backup_id);
@@ -231,22 +230,22 @@ fn test_restore_rebuilds_business_index() {
 
     let invoice_a1 = create_invoice(&env, &client, &admin, &business_a, 1_000, "A1");
     let invoice_a2 = create_invoice(&env, &client, &admin, &business_a, 2_000, "A2");
-    let backup_id = client.create_backup(&admin).expect("backup must succeed");
+    let backup_id = client.create_backup(&admin);
 
     // Add invoices for business_b after backup
     create_invoice(&env, &client, &admin, &business_b, 3_000, "B1");
     create_invoice(&env, &client, &admin, &business_b, 4_000, "B2");
 
-    client.restore_backup(&admin, &backup_id).expect("restore must succeed");
+    client.restore_backup(&admin, &backup_id);
 
     // business_a index rebuilt with 2 invoices
-    let a_invoices = client.get_invoices_by_business(&business_a);
+    let a_invoices = client.get_invoice_by_business(&business_a);
     assert_eq!(a_invoices.len(), 2);
     assert!(a_invoices.contains(&invoice_a1));
     assert!(a_invoices.contains(&invoice_a2));
 
     // business_b index is empty (those invoices were cleared)
-    let b_invoices = client.get_invoices_by_business(&business_b);
+    let b_invoices = client.get_invoice_by_business(&business_b);
     assert_eq!(b_invoices.len(), 0);
 }
 
@@ -258,7 +257,7 @@ fn test_restore_rebuilds_status_index() {
 
     let invoice_1 = create_invoice(&env, &client, &admin, &business, 1_000, "Invoice 1");
     let invoice_2 = create_invoice(&env, &client, &admin, &business, 2_000, "Invoice 2");
-    let backup_id = client.create_backup(&admin).expect("backup must succeed");
+    let backup_id = client.create_backup(&admin);
 
     // Verify one invoice and add a new one after backup
     client.verify_invoice(&invoice_1);
@@ -268,7 +267,7 @@ fn test_restore_rebuilds_status_index() {
     assert_eq!(client.get_invoice_count_by_status(&InvoiceStatus::Pending), 2);
     assert_eq!(client.get_invoice_count_by_status(&InvoiceStatus::Verified), 1);
 
-    client.restore_backup(&admin, &backup_id).expect("restore must succeed");
+    client.restore_backup(&admin, &backup_id);
 
     // After restore: 2 pending (from backup), 0 verified
     assert_eq!(client.get_invoice_count_by_status(&InvoiceStatus::Pending), 2);
@@ -289,12 +288,12 @@ fn test_restore_rebuilds_multiple_status_buckets() {
     let invoice_verified = create_invoice(&env, &client, &admin, &business, 2_000, "Verified");
     client.verify_invoice(&invoice_verified);
 
-    let backup_id = client.create_backup(&admin).expect("backup must succeed");
+    let backup_id = client.create_backup(&admin);
 
     // Add more invoices after backup
     create_invoice(&env, &client, &admin, &business, 3_000, "Post-backup");
 
-    client.restore_backup(&admin, &backup_id).expect("restore must succeed");
+    client.restore_backup(&admin, &backup_id);
 
     // Exactly 1 pending and 1 verified from backup
     assert_eq!(client.get_invoice_count_by_status(&InvoiceStatus::Pending), 1);
@@ -314,7 +313,7 @@ fn test_restore_empty_backup_clears_all_invoices() {
     let business = verified_business(&env, &client, &admin);
 
     // Create backup with no invoices
-    let backup_id = client.create_backup(&admin).expect("empty backup must succeed");
+    let backup_id = client.create_backup(&admin);
     let backup = client.get_backup_details(&backup_id).unwrap();
     assert_eq!(backup.invoice_count, 0);
 
@@ -323,11 +322,11 @@ fn test_restore_empty_backup_clears_all_invoices() {
     create_invoice(&env, &client, &admin, &business, 2_000, "Invoice B");
     assert_eq!(client.get_total_invoice_count(), 2);
 
-    client.restore_backup(&admin, &backup_id).expect("restore must succeed");
+    client.restore_backup(&admin, &backup_id);
 
     // All invoices cleared
     assert_eq!(client.get_total_invoice_count(), 0);
-    assert_eq!(client.get_invoices_by_business(&business).len(), 0);
+    assert_eq!(client.get_invoice_by_business(&business).len(), 0);
     assert_eq!(client.get_invoice_count_by_status(&InvoiceStatus::Pending), 0);
 }
 
@@ -344,11 +343,11 @@ fn test_retention_count_based_cleanup() {
     create_invoice(&env, &client, &admin, &business, 1_000, "Invoice A");
     client.set_backup_retention_policy(&admin, &2, &0, &true);
 
-    let id1 = client.create_backup(&admin).expect("backup 1 must succeed");
+    let id1 = client.create_backup(&admin);
     env.ledger().set_timestamp(env.ledger().timestamp() + 1);
-    let id2 = client.create_backup(&admin).expect("backup 2 must succeed");
+    let id2 = client.create_backup(&admin);
     env.ledger().set_timestamp(env.ledger().timestamp() + 1);
-    let id3 = client.create_backup(&admin).expect("backup 3 must succeed");
+    let id3 = client.create_backup(&admin);
 
     let active = client.get_backups();
     assert_eq!(active.len(), 2);
@@ -367,9 +366,9 @@ fn test_retention_age_based_cleanup() {
     create_invoice(&env, &client, &admin, &business, 1_000, "Invoice A");
     client.set_backup_retention_policy(&admin, &0, &100, &true);
 
-    let old_id = client.create_backup(&admin).expect("old backup must succeed");
+    let old_id = client.create_backup(&admin);
     env.ledger().set_timestamp(env.ledger().timestamp() + 150);
-    let new_id = client.create_backup(&admin).expect("new backup must succeed");
+    let new_id = client.create_backup(&admin);
 
     let active = client.get_backups();
     assert_eq!(active.len(), 1);
@@ -385,14 +384,14 @@ fn test_archived_backups_survive_cleanup() {
 
     create_invoice(&env, &client, &admin, &business, 1_000, "Invoice A");
 
-    let archived_id = client.create_backup(&admin).expect("backup must succeed");
-    client.archive_backup(&admin, &archived_id).expect("archive must succeed");
+    let archived_id = client.create_backup(&admin);
+    client.archive_backup(&admin, &archived_id);
 
     client.set_backup_retention_policy(&admin, &1, &0, &true);
     env.ledger().set_timestamp(env.ledger().timestamp() + 1);
-    let active_1 = client.create_backup(&admin).expect("backup must succeed");
+    let active_1 = client.create_backup(&admin);
     env.ledger().set_timestamp(env.ledger().timestamp() + 1);
-    let active_2 = client.create_backup(&admin).expect("backup must succeed");
+    let active_2 = client.create_backup(&admin);
 
     let active = client.get_backups();
     assert_eq!(active.len(), 1);
@@ -413,10 +412,10 @@ fn test_manual_cleanup_disabled_returns_zero() {
     create_invoice(&env, &client, &admin, &business, 1_000, "Invoice A");
     client.set_backup_retention_policy(&admin, &1, &0, &false);
 
-    client.create_backup(&admin).expect("backup 1 must succeed");
-    client.create_backup(&admin).expect("backup 2 must succeed");
+    client.create_backup(&admin);
+    client.create_backup(&admin);
 
-    let removed = client.cleanup_backups(&admin).expect("cleanup must succeed");
+    let removed = client.cleanup_backups(&admin);
     assert_eq!(removed, 0);
     assert_eq!(client.get_backups().len(), 2);
 }
@@ -431,14 +430,14 @@ fn test_manual_cleanup_enforces_policy_when_enabled() {
     // Disable auto-cleanup so backups accumulate
     client.set_backup_retention_policy(&admin, &1, &0, &false);
 
-    let id1 = client.create_backup(&admin).expect("backup 1 must succeed");
+    let id1 = client.create_backup(&admin);
     env.ledger().set_timestamp(env.ledger().timestamp() + 1);
-    let id2 = client.create_backup(&admin).expect("backup 2 must succeed");
+    let id2 = client.create_backup(&admin);
     assert_eq!(client.get_backups().len(), 2);
 
     // Enable auto-cleanup and trigger manually
     client.set_backup_retention_policy(&admin, &1, &0, &true);
-    let removed = client.cleanup_backups(&admin).expect("cleanup must succeed");
+    let removed = client.cleanup_backups(&admin);
     assert_eq!(removed, 1);
 
     let active = client.get_backups();
@@ -472,7 +471,7 @@ fn test_restore_backup_requires_admin() {
     let business = verified_business(&env, &client, &admin);
 
     create_invoice(&env, &client, &admin, &business, 1_000, "Invoice A");
-    let backup_id = client.create_backup(&admin).expect("backup must succeed");
+    let backup_id = client.create_backup(&admin);
 
     let stranger = Address::generate(&env);
     let result = client.try_restore_backup(&stranger, &backup_id);
@@ -487,7 +486,7 @@ fn test_archive_backup_requires_admin() {
     let business = verified_business(&env, &client, &admin);
 
     create_invoice(&env, &client, &admin, &business, 1_000, "Invoice A");
-    let backup_id = client.create_backup(&admin).expect("backup must succeed");
+    let backup_id = client.create_backup(&admin);
 
     let stranger = Address::generate(&env);
     let result = client.try_archive_backup(&stranger, &backup_id);
@@ -517,7 +516,7 @@ fn test_validate_backup_rejects_tampered_count() {
     let business = verified_business(&env, &client, &admin);
 
     create_invoice(&env, &client, &admin, &business, 1_000, "Invoice A");
-    let backup_id = client.create_backup(&admin).expect("backup must succeed");
+    let backup_id = client.create_backup(&admin);
     assert!(client.validate_backup(&backup_id));
 
     let mut tampered = client.get_backup_details(&backup_id).unwrap();
@@ -534,7 +533,7 @@ fn test_validate_backup_rejects_missing_payload() {
     let business = verified_business(&env, &client, &admin);
 
     create_invoice(&env, &client, &admin, &business, 1_000, "Invoice A");
-    let backup_id = client.create_backup(&admin).expect("backup must succeed");
+    let backup_id = client.create_backup(&admin);
 
     // Remove the payload data key
     let data_key = (soroban_sdk::symbol_short!("bkup_data"), backup_id.clone());
@@ -565,7 +564,7 @@ fn test_backup_metadata_count_matches_payload() {
     create_invoice(&env, &client, &admin, &business, 2_000, "Invoice 2");
     create_invoice(&env, &client, &admin, &business, 3_000, "Invoice 3");
 
-    let backup_id = client.create_backup(&admin).expect("backup must succeed");
+    let backup_id = client.create_backup(&admin);
     let backup = client.get_backup_details(&backup_id).unwrap();
 
     assert_eq!(backup.invoice_count, 3);
@@ -580,9 +579,9 @@ fn test_backup_ids_are_unique() {
 
     create_invoice(&env, &client, &admin, &business, 1_000, "Invoice A");
 
-    let id1 = client.create_backup(&admin).expect("backup 1 must succeed");
-    let id2 = client.create_backup(&admin).expect("backup 2 must succeed");
-    let id3 = client.create_backup(&admin).expect("backup 3 must succeed");
+    let id1 = client.create_backup(&admin);
+    let id2 = client.create_backup(&admin);
+    let id3 = client.create_backup(&admin);
 
     assert_ne!(id1, id2);
     assert_ne!(id2, id3);
@@ -597,8 +596,8 @@ fn test_backup_list_deduplication() {
 
     create_invoice(&env, &client, &admin, &business, 1_000, "Invoice A");
 
-    let id1 = client.create_backup(&admin).expect("backup must succeed");
-    let id2 = client.create_backup(&admin).expect("backup must succeed");
+    let id1 = client.create_backup(&admin);
+    let id2 = client.create_backup(&admin);
 
     // Manually add id2 again (simulating a bug)
     BackupStorage::add_to_backup_list(&env, &id2);
@@ -617,7 +616,7 @@ fn test_backup_creation_stores_active_status() {
     let business = verified_business(&env, &client, &admin);
 
     create_invoice(&env, &client, &admin, &business, 1_000, "Invoice A");
-    let backup_id = client.create_backup(&admin).expect("backup must succeed");
+    let backup_id = client.create_backup(&admin);
 
     let backup = client.get_backup_details(&backup_id).unwrap();
     assert_eq!(backup.status, BackupStatus::Active);

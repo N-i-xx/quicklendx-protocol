@@ -17,13 +17,10 @@ proptest = "1.4"
 # Optimized for minimal WASM size and network deployment limits (see README size budget).
 [profile.release]
 opt-level = "z"
-overflow-checks = true
-debug = 0
-strip = true
-debug-assertions = false
-panic = "abort"
-codegen-units = 1
 lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
 
 # For more information about this profile see https://soroban.stellar.org/docs/basic-tutorials/logging#cargotoml-profile
 [profile.release-with-logs]

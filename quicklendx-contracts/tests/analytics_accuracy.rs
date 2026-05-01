@@ -1,9 +1,8 @@
 #![cfg(feature = "legacy-tests")]
 #![cfg(feature = "legacy-tests")]
 
-use quicklendx_contracts::{
-    InvoiceCategory, InvoiceStatus, QuickLendXContract, QuickLendXContractClient,
-};
+use quicklendx_contracts::types::{InvoiceCategory, InvoiceStatus};
+use quicklendx_contracts::{QuickLendXContract, QuickLendXContractClient};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env, String, Vec};
 
